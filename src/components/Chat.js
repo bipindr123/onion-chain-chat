@@ -222,6 +222,8 @@ class Chat extends Component {
     }
     
     async didSendMessage(message, is_user_msg) {
+        var next_node = ""
+        var cur_node = ""
         // is the start node
         if(is_user_msg)
         {
@@ -246,8 +248,8 @@ class Chat extends Component {
 
             message = n_nodes.toString() + "," + message
             console.log("The message " + message)
-            this.state.chatContract.methods.sendMsg(n_nodes[0], message)
-                .send({ from: this.state.account, gas: 6721900            })  
+            next_node = n_nodes[0]
+            cur_node = this.state.account
         }
         else
         {
@@ -255,34 +257,34 @@ class Chat extends Component {
             let n_nodes = message.split(",")
 
             // node to send to next
-            let cur_node = n_nodes.shift()
-            let next_node = n_nodes[0]
+            cur_node = n_nodes.shift()
+            next_node = n_nodes[0]
             message = n_nodes.toString()
 
             console.log("Intermediate node")
             console.log("From: " + cur_node )
             console.log(" To " + next_node)
-
-            this.state.chatContract.methods.sendMsg(next_node, message)
-            .send({ from: cur_node, gas: 6721900            }) 
-
         }
+
+        this.state.chatContract.methods.sendMsg(next_node, message)
+        .send({ from: cur_node, gas: 6721900            }) 
         
         
-        await this.sendEtherIfAsked()
+        await this.sendEtherIfAsked(is_user_msg, cur_node, next_node, message)
         await this.askEtherIfAsked()
     }
 
-    async sendEtherIfAsked() {
-        let splitted = this.state.inputValue.split(':')
+    async sendEtherIfAsked(is_user_msg, cur_node, next_node, message) {
+        let n_nodes = message.split(",")
+        let splitted = n_nodes[n_nodes.length-1].split(':')
         if (splitted.length !== 2)
             return false
 
         if (splitted[0] == "send_ether" && this.isNumeric(splitted[1])) {
             let asWei = parseFloat(splitted[1]) * 1e18
-            this.state.chatContract.methods.sendEther(this.state.otherAccount).send({
-                from: this.state.account,
-                value: asWei
+            this.state.chatContract.methods.sendEther(next_node).send({
+                from: cur_node,
+                value: asWei,
             })
             return true
         }
