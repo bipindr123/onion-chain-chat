@@ -10,7 +10,6 @@ class Chat extends Component {
         await this.loadBlockchainData()
         await this.listenToMessages()
         await this.listenToEther()
-        await this.listenToAskEther()
         await this.listenToFetchAllMsg()
         await this.fetchAllMsg()
         await this.updateUIData()
@@ -110,13 +109,6 @@ class Chat extends Component {
         .on('error', console.error);
     }
 
-    async listenToAskEther() {
-        var binded = this.didReceiveAskEtherBinded.bind(this)
-        this.state.chatContract.events.etherAskEvent({})
-        .on('data', binded)
-        .on('error', console.error);
-    }
-
     async listenToFetchAllMsg() {
         var binded = this.didReceiveAllMsgBinded.bind(this)
         this.state.chatContract.events.messagesFetchedEvent({})
@@ -171,21 +163,6 @@ class Chat extends Component {
         await this.updateUIData()
     }
 
-    async didReceiveAskEtherBinded(event){
-        if (this.state.account === event.returnValues.to) {
-            let value_as_wei = window.web3.utils.fromWei(
-                event.returnValues.value, "ether")
-    
-            this.setState({
-                didATransaction: false,
-                didARequest: true,
-                accountRequesting: event.returnValues.from,
-                accountRequested: event.returnValues.to,
-                valueRequested: value_as_wei,
-            })
-            await this.updateUIData()
-        }
-    }
 
     async didReceiveAllMsgBinded(event){
         let allMsg = []
@@ -271,7 +248,6 @@ class Chat extends Component {
         
         
         await this.sendEtherIfAsked(is_user_msg, cur_node, next_node, message)
-        await this.askEtherIfAsked()
     }
 
     async sendEtherIfAsked(is_user_msg, cur_node, next_node, message) {
@@ -291,18 +267,6 @@ class Chat extends Component {
         return false
     }
 
-    async askEtherIfAsked() {
-        let splitted = this.state.inputValue.split(':')
-        if (splitted.length !== 2)
-            return false
-
-        if (splitted[0] == "ask_ether" && this.isNumeric(splitted[1])) {
-            var asWei = (parseFloat(splitted[1]) * 1e18).toString()
-            this.state.chatContract.methods.askEther(this.state.otherAccount, asWei).send({ from: this.state.account })
-            return true
-        }
-        return false
-    }
 
     async fetchAllMsg() {
         await this.state.chatContract.methods.getAllMsg(this.state.otherAccount).send({ from: this.state.account })
@@ -418,26 +382,7 @@ class Chat extends Component {
             return <div>error</div>
     }
 
-    displayAskEtherPopUp() {
-        let to = this.state.accountRequested
-        let valueAsEther = this.state.valueRequested
-        let valueAsWei = parseFloat(this.state.valueRequested) * 1e18
-        
-        if (this.state.didARequest && to === this.state.account) {
-            return (
-            <div className="didAskContainer">
-                <h6>Ether request</h6>
-                <p>Account { to } requests you { valueAsEther } ether.</p>
-                
-                <button class="btn btn-success send-btn" onClick={() => this.state.chatContract.methods.sendEther(this.state.accountRequesting).send({
-                    from: to,
-                    value: valueAsWei
-                })}>Accept</button>
-            </div>
-            )
-        }
-        return
-    }
+
 
     // ------- helpers ------
     isNumeric(str) {
@@ -506,9 +451,6 @@ class Chat extends Component {
 
                         <div class="alert-transac">
                             { this.displayEtherTransactionStatus() }
-                        </div>
-                        <div class="alert-request">
-                            { this.displayAskEtherPopUp() }
                         </div>
                         
                     </div>
