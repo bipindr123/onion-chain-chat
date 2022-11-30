@@ -2,8 +2,7 @@ import Web3 from 'web3';
 import React, { Component } from 'react';
 import ChatApp from '../abis/ChatApp.json'
 import mainLogo from './arrow.png'
-import JSEncrypt from 'jsencrypt'
-import keyMap from './bipinkeys4.json'
+
 class Chat extends Component {
 
     async componentWillMount() {
@@ -11,7 +10,6 @@ class Chat extends Component {
         await this.loadBlockchainData()
         await this.listenToMessages()
         await this.listenToEther()
-        await this.listenToAskEther()
         await this.listenToFetchAllMsg()
         await this.fetchAllMsg()
         await this.updateUIData()
@@ -49,10 +47,6 @@ class Chat extends Component {
             accountRequesting: '',
             accountRequested: '',
             valueRequested: 0,
-            account_keys : {},
-            account_key_bits: {},
-            placeholder: "Type here",
-
         }
     }
 
@@ -83,16 +77,7 @@ class Chat extends Component {
             otherAccount: accounts[1]
          })
         console.log(accounts)
-
-        var accLength = accounts.length;
-        console.log("Number of Accounts: ", accLength)
-
-        for( var i = 0; i < accLength; i++){
-
-            this.state.account_keys[accounts[i]] = keyMap[i];
-            
-        }
-
+    
         const ethBalance = await web3.eth.getBalance(this.state.account)
         this.setState({ ethBalance })
     
@@ -124,13 +109,6 @@ class Chat extends Component {
         .on('error', console.error);
     }
 
-    async listenToAskEther() {
-        var binded = this.didReceiveAskEtherBinded.bind(this)
-        this.state.chatContract.events.etherAskEvent({})
-        .on('data', binded)
-        .on('error', console.error);
-    }
-
     async listenToFetchAllMsg() {
         var binded = this.didReceiveAllMsgBinded.bind(this)
         this.state.chatContract.events.messagesFetchedEvent({})
@@ -138,52 +116,29 @@ class Chat extends Component {
         .on('error', console.error);
     }
 
-    decryptMessage(cipherText,acc, bits){
-        var decryptor = new JSEncrypt();
-        decryptor.setPrivateKey(this.state.account_keys[acc][bits][1]);
-        var plainText = decryptor.decrypt(cipherText);
-
-        return plainText;
-    }
-
+    // ------- handlers ------
     async didReceiveMessageBinded(event){
-
-        // console.log("Here")
-        var message = event.returnValues.message
-        console.log("Recieved Message: ", message)
-        let cur_node = event.returnValues.to
-        var de_msg = this.decryptMessage(message,cur_node,this.state.account_key_bits[cur_node])
-        console.log("decrypted msg")
-        console.log(de_msg)
+        let message = event.returnValues.message
 
         //TODO decrypt and send message
-        let n_nodes = de_msg.split(",")
-        console.log("Message split: ", n_nodes)
-        // console.log("Recieved Cipher : ", n_nodes[n_nodes.length-1])
-        
+        let n_nodes = message.split(",")
 
         // intermidiate node, so foward message
-        if(this.state.accounts.indexOf(n_nodes[0]) > -1)
+        if(this.state.accounts.indexOf(n_nodes[1]) > -1)
         {
-            console.log("Intermediate node recived message " + cur_node)
+            console.log("Intermediate node recived message " + n_nodes[0])
             console.log("forwarding")
-            this.didSendMessage(cur_node +"," +de_msg,false)
+            this.didSendMessage(message,false)
         }
         else
         {
+            let n_nodes = message.split(",")
 
-            console.log("Final node recieved message ")
-            console.log(n_nodes[0])
-            message = n_nodes[0]
+            console.log("Final node recieved message")
 
             // final message
-            // message = n_nodes[1]
-            // var plainText = this.decryptMessage(n_nodes[1],this.state.otherAccount)
-            // console.log("Decrypted Message: ", plainText)
-            // message = plainText
-            console.log(message)
-            console.log(event.returnValues.from)
-            console.log(event.returnValues.to)
+            message = n_nodes[1]
+
             if (event.returnValues.from === this.state.account){
                 this.didReceiveMessage(message, true)
             }
@@ -196,18 +151,6 @@ class Chat extends Component {
             })
             await this.updateUIData()
         }
-
-        // if (event.returnValues.from === this.state.account){
-        //     this.didReceiveMessage(plainText, true)
-        // }
-        // if (event.returnValues.to === this.state.account){
-        //     this.didReceiveMessage(plainText, false)
-        // }
-        // this.setState({
-        //     didATransaction: false,
-        //     didARequest: false,
-        // })
-        // await this.updateUIData()
     }
 
     async didReceiveEtherBinded(event) {
@@ -220,28 +163,13 @@ class Chat extends Component {
         await this.updateUIData()
     }
 
-    async didReceiveAskEtherBinded(event){
-        if (this.state.account === event.returnValues.to) {
-            let value_as_wei = window.web3.utils.fromWei(
-                event.returnValues.value, "ether")
-    
-            this.setState({
-                didATransaction: false,
-                didARequest: true,
-                accountRequesting: event.returnValues.from,
-                accountRequested: event.returnValues.to,
-                valueRequested: value_as_wei,
-            })
-            await this.updateUIData()
-        }
-    }
 
     async didReceiveAllMsgBinded(event){
         let allMsg = []
 
         event.returnValues.messages.forEach((message) => {
             allMsg.push({
-                msg: this.decryptMessage(message['message'],this.state.otherAccount, 200),
+                msg: message['message'],
                 response: message['from'] === this.state.account
             })
         })
@@ -255,6 +183,7 @@ class Chat extends Component {
     }
 
     async didReceiveMessage(message, isResponse) {
+
         let chats = this.state.chats
         chats.push(
             {
@@ -266,73 +195,23 @@ class Chat extends Component {
             chats: chats,
             inputValue: ''
         })
-        console.log(chats)
-    }
-
-    encryptMessage(message,acc, bits){
-
-        console.log("In encrypt")
-        var encryptor = new JSEncrypt();
-        encryptor.setPublicKey(this.state.account_keys[acc][bits][0]);
-        var cipherText = encryptor.encrypt(message);
-        
-        // console.log(cipherText)
-
-        return cipherText;
 
     }
-
-    makeOnion(nodes){
-
-        nodes = nodes.reverse()
-        var nLength = nodes.length
-        var cipherText = nodes[0]
-        var cipher_temp = ""
-        var rsa = [200,800,1600,2600]
-        for (var i = 1; i < nLength; i++){
-
-            console.log("Onion layer: ",i)
-            console.log("Encrypt for node: ", nodes[i])
-            console.log(cipherText.length,  rsa[i-1])
-            this.state.account_key_bits[nodes[i]] = rsa[i-1]
-            cipher_temp = this.encryptMessage(cipherText, nodes[i], rsa[i-1])
-            cipherText = nodes[i]+","+cipher_temp
-            console.log(cipherText)
-            
-        }
-        
-        return cipherText
-
-
-    }
-
-    async didSendMessage(message,is_user_msg) {
-        this.setState(
-            {
-                inputValue: "",
-                placeholder: "Sent!",
-            }
-        )
-
-        
-
-        // Onion Routing
-
+    
+    async didSendMessage(message, is_user_msg) {
         var next_node = ""
         var cur_node = ""
-        var cipherText = ""
-
-        if(is_user_msg){
-
-
+        // is the start node
+        if(is_user_msg)
+        {
             let accounts = this.state.accounts
             
-            // intermeditate nodes length
-            let n_nodes_length = 3;
+            // intermeditate nodes lenght
+            let n_nodes_lenght = 3;
             let n_nodes = []
 
             //chose random nodes
-            for (let i = 0; i < n_nodes_length; i++) {
+            for (let i = 0; i < n_nodes_lenght; i++) {
                 n_nodes.push(accounts[Math.floor(Math.random() * accounts.length)])
             }
 
@@ -343,82 +222,51 @@ class Chat extends Component {
                 console.log(node);
             }
 
-            // // Intercept Message and encrypt
-            // var cipherText = this.encryptMessage(message,this.state.otherAccount)
-            // console.log("Cipher Text : ",cipherText)
 
-            
-            
             message = n_nodes.toString() + "," + message
             console.log("The message " + message)
             next_node = n_nodes[0]
-            // console.log("next node: " + next_node)
             cur_node = this.state.account
-
-            // couple encryption with each node in onion
-            let onion_nodes = message.split(',')
-            let onion_length = onion_nodes.length
-            console.log("onion: ", onion_nodes + "\n Onion length :" ,onion_length)
-
-            cipherText = this.makeOnion(onion_nodes)
-            cipherText = cipherText.split(",")[1]
-
-            console.log("Cipher Text: ", cipherText)
-
         }
-        else{
-
+        else
+        {
+            // intermediate node
             let n_nodes = message.split(",")
 
             // node to send to next
             cur_node = n_nodes.shift()
-            next_node = n_nodes.shift()
-            cipherText = n_nodes.toString()
+            next_node = n_nodes[0]
+            message = n_nodes.toString()
 
             console.log("Intermediate node")
             console.log("From: " + cur_node )
-            console.log(" To: " + next_node)
-
-
+            console.log(" To " + next_node)
         }
 
-        // Intercept Message and encrypt
-
-
-        this.state.chatContract.methods.sendMsg(next_node, cipherText)
-            .send({ from: cur_node, gas: 1500000 })
-        // await this.sendEtherIfAsked()
-        // await this.askEtherIfAsked()
+        this.state.chatContract.methods.sendMsg(next_node, message)
+        .send({ from: cur_node, gas: 6721900            }) 
+        
+        
+        await this.sendEtherIfAsked(is_user_msg, cur_node, next_node, message)
     }
 
-    async sendEtherIfAsked() {
-        let splitted = this.state.inputValue.split(':')
+    async sendEtherIfAsked(is_user_msg, cur_node, next_node, message) {
+        let n_nodes = message.split(",")
+        let splitted = n_nodes[n_nodes.length-1].split(':')
         if (splitted.length !== 2)
             return false
 
         if (splitted[0] == "send_ether" && this.isNumeric(splitted[1])) {
             let asWei = parseFloat(splitted[1]) * 1e18
-            this.state.chatContract.methods.sendEther(this.state.otherAccount).send({
-                from: this.state.account,
-                value: asWei
+            this.state.chatContract.methods.sendEther(next_node).send({
+                from: cur_node,
+                value: asWei,
             })
             return true
         }
         return false
     }
 
-    async askEtherIfAsked() {
-        let splitted = this.state.inputValue.split(':')
-        if (splitted.length !== 2)
-            return false
-
-        if (splitted[0] == "ask_ether" && this.isNumeric(splitted[1])) {
-            var asWei = (parseFloat(splitted[1]) * 1e18).toString()
-            this.state.chatContract.methods.askEther(this.state.otherAccount, asWei).send({ from: this.state.account })
-            return true
-        }
-        return false
-    }
 
     async fetchAllMsg() {
         await this.state.chatContract.methods.getAllMsg(this.state.otherAccount).send({ from: this.state.account })
@@ -429,7 +277,7 @@ class Chat extends Component {
         await this.updateNbTransactions()
         await this.updateBalances()
         await this.updateBlocks()
-        // await this.updateLastGas()
+        await this.updateLastGas()
     }
 
     updateInputValue(evt) {
@@ -534,26 +382,7 @@ class Chat extends Component {
             return <div>error</div>
     }
 
-    displayAskEtherPopUp() {
-        let to = this.state.accountRequested
-        let valueAsEther = this.state.valueRequested
-        let valueAsWei = parseFloat(this.state.valueRequested) * 1e18
-        
-        if (this.state.didARequest && to === this.state.account) {
-            return (
-            <div className="didAskContainer">
-                <h6>Ether request</h6>
-                <p>Account { to } requests you { valueAsEther } ether.</p>
-                
-                <button class="btn btn-success send-btn" onClick={() => this.state.chatContract.methods.sendEther(this.state.accountRequesting).send({
-                    from: to,
-                    value: valueAsWei
-                })}>Accept</button>
-            </div>
-            )
-        }
-        return
-    }
+
 
     // ------- helpers ------
     isNumeric(str) {
@@ -598,14 +427,15 @@ class Chat extends Component {
                         </section>
                         <div class="footer-chat">
                             <i class="icon fa fa-smile-o clickable" style={{fontSize: "25pt"}} aria-hidden="true"></i>
-                            <input value={this.state.inputValue} onChange={evt => this.updateInputValue(evt)} type="text" class="write-message" placeholder= {this.state.placeholder}></input>
+                            <input value={this.state.inputValue} onChange={evt => this.updateInputValue(evt)} type="text" class="write-message" placeholder="Type your message here"></input>
                             <i class="icon send fa fa-paper-plane-o clickable" aria-hidden="true"></i>
-                            <button class="btn btn-success send-btn" onClick={() => this.didSendMessage(this.state.inputValue,true)}>Send</button>
+                            <button class="btn btn-success send-btn" onClick={() => this.didSendMessage(this.state.inputValue, true)}>Send</button>
                         </div>
                     </div>
                     <div class="col-5 right-block">
                         <h3>Blockchain state</h3>
                         <p>Number of blocks: { this.state.nbBlocks }</p>
+                        <p>Last transaction gas: { this.state.lastGas }</p>
                         <div class="sender-block blockchain-block">
                             <p><b>Sender address:</b></p>
                             <p>{ this.state.account }</p>
@@ -621,9 +451,6 @@ class Chat extends Component {
 
                         <div class="alert-transac">
                             { this.displayEtherTransactionStatus() }
-                        </div>
-                        <div class="alert-request">
-                            { this.displayAskEtherPopUp() }
                         </div>
                         
                     </div>
